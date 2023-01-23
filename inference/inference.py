@@ -46,13 +46,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default='SumMe', help="Dataset to be used. Supported: {SumMe, TVSum}")
     parser.add_argument("--table", type=str, default='4', help="Table to be reproduced. Supported: {3, 4}")
+    parser.add_argument("--split_ids", type=int, nargs='+', help="Split ids")
 
     args = vars(parser.parse_args())
     dataset = args["dataset"]
     table = args["table"]
+    split_ids = args["split_ids"]
+    print(split_ids)
 
     eval_metric = 'avg' if dataset.lower() == 'tvsum' else 'max'
-    for split_id in range(5):
+    for split_id in split_ids:
         # Model data
         model_path = f"../PGL-SUM/inference/pretrained_models/table{table}_models/{dataset}/split{split_id}"
         model_file = [f for f in listdir(model_path) if isfile(join(model_path, f))]
