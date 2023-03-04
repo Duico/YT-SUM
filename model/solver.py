@@ -11,6 +11,7 @@ from tqdm import tqdm, trange
 from layers.summarizer import PGL_SUM
 from utils import TensorboardWriter
 
+from f1_score_test import compute_f1_score
 
 class Solver(object):
     def __init__(self, config=None, train_loader=None, test_loader=None):
@@ -86,7 +87,7 @@ class Solver(object):
 
                 self.optimizer.zero_grad()
                 for _ in trange(self.config.batch_size, desc='Video', ncols=80, leave=False):
-                    frame_features, target = next(iterator)
+                    frame_features, target, _ = next(iterator)
 
                     frame_features = frame_features.to(self.config.device)
                     target = target.to(self.config.device)
@@ -118,33 +119,56 @@ class Solver(object):
             # tqdm.write(f'Save parameters at {ckpt_path}')
             # torch.save(self.model.state_dict(), ckpt_path)
 
-            self.evaluate(epoch_i)
+            if(self.config.eval_trainset):
+                if(epoch_i % 10 == 0 or epoch_i == self.config.n_epochs-1):
+                    # run evaluation on train data
+                    self.evaluate(epoch_i, iter(self.train_loader), "train")
+            self.evaluate(epoch_i, self.test_loader, "test")
 
-    def evaluate(self, epoch_i, save_weights=False):
+    def evaluate(self, epoch_i, dataset_iterable = None, mode = "test", save_weights=False):
         """ Saves the frame's importance scores for the test videos in json format.
 
         :param int epoch_i: The current training epoch.
         :param bool save_weights: Optionally, the user can choose to save the attention weights in a (large) h5 file.
         """
+        if dataset_iterable is None:
+            dataset_iterable = self.test_loader
+
         self.model.eval()
 
         weights_save_path = self.config.score_dir.joinpath("weights.h5")
         out_scores_dict = {}
-        for frame_features, video_name in tqdm(self.test_loader, desc='Evaluate', ncols=80, leave=False):
+        losses_test = []
+        f1_scores = []
+
+        for frame_features, gtscore, video_name in tqdm(dataset_iterable, desc='Evaluate', ncols=80, leave=False):
             # [seq_len, input_size]
-            frame_features = frame_features.view(-1, self.config.input_size).to(self.config.device)
+            # if mode == "test":
+            #     frame_features = frame_features.view(-1, self.config.input_size).to(self.config.device)
+            # else: 
+            
+            if isinstance(video_name, tuple):
+                video_name = video_name[0]
+            frame_features = frame_features.to(self.config.device)
 
             with torch.no_grad():
-                scores, attn_weights = self.model(frame_features)  # [1, seq_len]
-                scores = scores.squeeze(0).cpu().numpy().tolist()
+                scores, attn_weights = self.model(frame_features.squeeze(0))  # [1, seq_len]
+                gtscore = gtscore.to(self.config.device).squeeze(0)
+                scores = scores.squeeze(0)
+                loss_test = self.criterion(scores, gtscore)
+                scores_np = scores.cpu().numpy()
+                gtscore_np = gtscore.cpu().numpy()
+                f1_score = compute_f1_score(scores_np, gtscore_np)
+                scores_list = scores_np.tolist()
                 attn_weights = attn_weights.cpu().numpy()
-
-                out_scores_dict[video_name] = scores
+                f1_scores.append(f1_score)
+                losses_test.append(loss_test.data)
+                out_scores_dict[video_name] = scores_list
 
             if not os.path.exists(self.config.score_dir):
                 os.makedirs(self.config.score_dir)
 
-            scores_save_path = self.config.score_dir.joinpath(f"{self.config.video_type}_{epoch_i}.json")
+            scores_save_path = self.config.score_dir.joinpath(f"{self.config.video_type}-{mode}_{epoch_i}.json")
             with open(scores_save_path, 'w') as f:
                 if self.config.verbose:
                     tqdm.write(f'Saving score at {str(scores_save_path)}.')
@@ -154,7 +178,10 @@ class Solver(object):
             if save_weights:
                 with h5py.File(weights_save_path, 'a') as weights:
                     weights.create_dataset(f"{video_name}/epoch_{epoch_i}", data=attn_weights)
-
+        loss_avg = torch.stack(losses_test).mean()
+        f1_avg = np.stack(f1_scores).mean()
+        self.writer.update_loss(loss_avg, epoch_i, f"loss_{mode}_epoch")
+        self.writer.update_loss(f1_avg, epoch_i, f"f1_score_{mode}_epoch")
 
 if __name__ == '__main__':
     pass

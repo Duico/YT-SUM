@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from configs import get_config
 from solver import Solver
-from data_loader import get_loader
+from data_loader_YT import get_loader
 
 
 if __name__ == '__main__':

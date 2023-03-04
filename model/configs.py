@@ -3,8 +3,12 @@ import argparse
 import torch
 from pathlib import Path
 import pprint
+import random
 
-save_dir = Path('../PGL-SUM/Summaries/PGL-SUM/exp1')
+# save_dir = Path('../PGL-SUM/Summaries/PGL-SUM/exp4')
+# --->
+# save_dir = Path('../PGL-SUM/Summaries/exp4')
+
 
 
 def str2bool(v):
@@ -28,7 +32,7 @@ class Config(object):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         for k, v in kwargs.items():
             setattr(self, k, v)
-
+        self.out_dir = Path(self.out_dir)
         self.set_dataset_dir(self.video_type)
 
     def set_dataset_dir(self, video_type='TVSum'):
@@ -36,9 +40,9 @@ class Config(object):
 
         :param str video_type: The Dataset being used, SumMe or TVSum.
         """
-        self.log_dir = save_dir.joinpath(video_type, 'logs/split' + str(self.split_index))
-        self.score_dir = save_dir.joinpath(video_type, 'results/split' + str(self.split_index))
-        self.save_dir = save_dir.joinpath(video_type, 'models/split' + str(self.split_index))
+        self.log_dir = self.out_dir.joinpath(video_type, 'logs/split' + str(self.split_index))
+        self.score_dir = self.out_dir.joinpath(video_type, 'results/split' + str(self.split_index))
+        self.save_dir = self.out_dir.joinpath(video_type, 'models/split' + str(self.split_index))
 
     def __repr__(self):
         """Pretty-print configurations in alphabetical order"""
@@ -54,6 +58,8 @@ def get_config(parse=True, **optional_kwargs):
         3. Return Config class.
     """
     parser = argparse.ArgumentParser()
+    parser.add_argument('--out_dir', type=str, default='../PGL-SUM/Summaries/exp_noname_'+str(random.randint(10000,99999)), help='Mode for the configuration [train | test]')
+    parser.add_argument('--eval_trainset', action='store_true', help='Run evaluation also on the training set')
 
     # Mode
     parser.add_argument('--mode', type=str, default='train', help='Mode for the configuration [train | test]')
